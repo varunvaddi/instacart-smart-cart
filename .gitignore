@@ -1,0 +1,50 @@
+# Secrets & Keys
+*.key
+*.pem
+.env
+.env.*
+secrets/
+kaggle.json
+
+# Data files (too large for Git)
+*.csv
+*.parquet
+*.json
+data/
+instacart-data/
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Azure
+.azure/
+
+# Databricks
+.databricks/
+
+# Logs
+*.log
