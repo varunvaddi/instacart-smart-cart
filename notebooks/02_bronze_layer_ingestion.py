@@ -246,3 +246,167 @@ print("\n✅ Time Travel Working!")
 print("   You can query any previous version of the data!")
 
 print("=" * 70)
+
+# COMMAND ----------
+
+# Cell 8: Load Orders to Bronze Delta Table
+
+print("=" * 70)
+print("📋 LOADING ORDERS TABLE")
+print("=" * 70)
+
+from pyspark.sql.functions import current_timestamp, lit
+
+# Read CSV
+print("\n🔄 Reading orders.csv...")
+print("   (This may take 30-60 seconds with 3.4M rows...)")
+
+orders = spark.read.csv("/mnt/bronze/raw/orders.csv", header=True, inferSchema=True)
+
+row_count = orders.count()
+print(f"   ✅ Loaded {row_count:,} orders")
+
+# Show sample
+print("\n📊 Sample Data:")
+orders.show(10, truncate=False)
+
+# Show schema
+print("\n📋 Schema:")
+orders.printSchema()
+
+# Basic statistics
+print("\n📈 Quick Statistics:")
+print(f"   Total orders: {row_count:,}")
+print(f"   Unique users: {orders.select('user_id').distinct().count():,}")
+print(f"   Columns: {len(orders.columns)}")
+
+print("\n" + "=" * 70)
+
+# COMMAND ----------
+
+# Cell 9: Data Quality Checks for Orders
+
+print("=" * 70)
+print("🧪 DATA QUALITY CHECKS - ORDERS")
+print("=" * 70)
+
+from pyspark.sql.functions import col
+
+# Check 1: Null values
+print("\n1️⃣ CHECKING FOR NULL VALUES:")
+null_checks = {}
+for column in orders.columns:
+    null_count = orders.filter(col(column).isNull()).count()
+    null_checks[column] = null_count
+    if null_count > 0:
+        pct = (null_count / orders.count()) * 100
+        print(f"   ⚠️  {column:30s}: {null_count:>10,} nulls ({pct:.2f}%)")
+    else:
+        print(f"   ✅ {column:30s}: No nulls")
+
+# Check 2: Duplicates
+print("\n2️⃣ CHECKING FOR DUPLICATES:")
+total_rows = orders.count()
+unique_orders = orders.dropDuplicates(["order_id"]).count()
+duplicates = total_rows - unique_orders
+if duplicates > 0:
+    print(f"   ⚠️  Found {duplicates:,} duplicate order_ids")
+else:
+    print(f"   ✅ No duplicate order_ids")
+
+# Check 3: Value ranges
+print("\n3️⃣ CHECKING VALUE RANGES:")
+
+# Day of week (should be 0-6)
+invalid_dow = orders.filter(~col("order_dow").between(0, 6)).count()
+if invalid_dow > 0:
+    print(f"   ⚠️  Invalid order_dow: {invalid_dow:,} rows")
+else:
+    print(f"   ✅ order_dow valid (0-6)")
+
+# Hour of day (should be 0-23)
+invalid_hour = orders.filter(~col("order_hour_of_day").between(0, 23)).count()
+if invalid_hour > 0:
+    print(f"   ⚠️  Invalid order_hour_of_day: {invalid_hour:,} rows")
+else:
+    print(f"   ✅ order_hour_of_day valid (0-23)")
+
+# Check 4: Distribution
+print("\n4️⃣ DATA DISTRIBUTION:")
+print(f"   Users: {orders.select('user_id').distinct().count():,}")
+print(f"   Orders per user (avg): {orders.count() / orders.select('user_id').distinct().count():.1f}")
+
+print("\n" + "=" * 70)
+print("✅ QUALITY CHECKS COMPLETE!")
+print("=" * 70)
+
+# COMMAND ----------
+
+# Cell 10: Save Orders to Bronze Delta Table
+
+print("=" * 70)
+print("💾 SAVING ORDERS TO DELTA LAKE")
+print("=" * 70)
+
+from pyspark.sql.functions import current_timestamp, lit
+
+# Add metadata columns
+print("\n➕ Adding metadata columns...")
+orders_bronze = orders \
+    .withColumn("ingestion_time", current_timestamp()) \
+    .withColumn("source_file", lit("orders.csv"))
+
+print("   ✅ Added: ingestion_time, source_file")
+
+# Write to Delta Lake
+print("\n💾 Writing to Delta Lake...")
+print("   (This will take 1-2 minutes for 3.4M rows...)")
+
+orders_bronze.write \
+    .format("delta") \
+    .mode("overwrite") \
+    .saveAsTable("bronze_db.orders")
+
+print("   ✅ Saved as bronze_db.orders")
+
+# Verify
+print("\n✅ VERIFICATION:")
+result = spark.table("bronze_db.orders")
+print(f"   Rows in Delta table: {result.count():,}")
+print(f"   Columns: {len(result.columns)}")
+
+# Show schema with new columns
+print("\n📋 Final Schema:")
+result.printSchema()
+
+print("\n" + "=" * 70)
+print("✅ ORDERS TABLE COMPLETE!")
+print("=" * 70)
+
+# COMMAND ----------
+
+# Cell 11: Bronze Layer Progress Summary
+
+print("=" * 70)
+print("📊 BRONZE LAYER PROGRESS")
+print("=" * 70)
+
+# List all tables
+print("\n📁 Tables in bronze_db:")
+tables = spark.sql("SHOW TABLES IN bronze_db").collect()
+
+total_rows = 0
+for table in tables:
+    table_name = table.tableName
+    count = spark.table(f"bronze_db.{table_name}").count()
+    total_rows += count
+    print(f"   ✅ {table_name:20s} - {count:>12,} rows")
+
+print(f"\n📊 TOTAL: {total_rows:,} rows in Bronze layer")
+
+print("\n🎯 REMAINING:")
+print("   ⏳ order_products (to be sampled to 5-10M rows)")
+
+print("\n" + "=" * 70)
+print("✅ 4 OF 5 TABLES COMPLETE!")
+print("=" * 70)
