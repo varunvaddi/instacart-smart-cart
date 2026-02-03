@@ -172,3 +172,237 @@ result.printSchema()
 print("\n" + "=" * 70)
 print("✅ ORDERS SAVED TO SILVER!")
 print("=" * 70)
+
+# COMMAND ----------
+
+# Cell 5: Enrich Products with Categories
+
+print("=" * 70)
+print("📦 ENRICHING PRODUCTS TABLE")
+print("=" * 70)
+
+from pyspark.sql.functions import col, current_timestamp, upper, trim
+
+# Load Bronze tables
+print("\n📥 Loading Bronze tables...")
+products = spark.table("bronze_db.products")
+aisles = spark.table("bronze_db.aisles")
+departments = spark.table("bronze_db.departments")
+
+print(f"   Products:    {products.count():,} rows")
+print(f"   Aisles:      {aisles.count():,} rows")
+print(f"   Departments: {departments.count():,} rows")
+
+# Step 1: Clean product names
+print("\n1️⃣  CLEANING PRODUCT NAMES:")
+products_clean = products \
+    .withColumn("product_name_clean", trim(col("product_name"))) \
+    .dropDuplicates(["product_id"])
+
+print(f"   ✅ Trimmed whitespace, removed duplicates")
+print(f"   Rows: {products_clean.count():,}")
+
+# Step 2: Join with aisles
+print("\n2️⃣  JOINING WITH AISLES:")
+products_with_aisles = products_clean.join(
+    aisles,
+    products_clean.aisle_id == aisles.aisle_id,
+    "left"
+).select(
+    products_clean["*"],
+    aisles["aisle"].alias("aisle_name")
+)
+
+print(f"   ✅ Joined with aisles")
+print(f"   Rows: {products_with_aisles.count():,}")
+
+# Step 3: Join with departments
+print("\n3️⃣  JOINING WITH DEPARTMENTS:")
+products_enriched = products_with_aisles.join(
+    departments,
+    products_with_aisles.department_id == departments.department_id,
+    "left"
+).select(
+    products_with_aisles["product_id"],
+    products_with_aisles["product_name"],
+    products_with_aisles["product_name_clean"],
+    products_with_aisles["aisle_id"],
+    products_with_aisles["aisle_name"],
+    products_with_aisles["department_id"],
+    departments["department"].alias("department_name")
+)
+
+print(f"   ✅ Joined with departments")
+print(f"   Rows: {products_enriched.count():,}")
+
+# Step 4: Add metadata
+print("\n4️⃣  ADDING METADATA:")
+products_silver = products_enriched \
+    .withColumn("silver_processing_time", current_timestamp())
+
+print(f"   ✅ Added silver_processing_time")
+
+# Show sample
+print("\n📊 ENRICHED PRODUCTS SAMPLE:")
+products_silver.show(10, truncate=False)
+
+# Validation
+print("\n🧪 VALIDATION:")
+null_aisles = products_silver.filter(col("aisle_name").isNull()).count()
+null_depts = products_silver.filter(col("department_name").isNull()).count()
+
+print(f"   Null aisles:      {null_aisles:,}")
+print(f"   Null departments: {null_depts:,}")
+
+if null_aisles == 0 and null_depts == 0:
+    print(f"   ✅ All products have categories!")
+
+print("\n" + "=" * 70)
+print("✅ PRODUCTS ENRICHED!")
+print("=" * 70)
+
+# COMMAND ----------
+
+# Cell 6: Save Products Enriched to Silver
+
+print("=" * 70)
+print("💾 SAVING PRODUCTS ENRICHED TO SILVER")
+print("=" * 70)
+
+# Write to Delta
+print("\n💾 Writing to Delta Lake...")
+products_silver.write \
+    .format("delta") \
+    .mode("overwrite") \
+    .saveAsTable("silver_db.products_enriched")
+
+print("   ✅ Saved as silver_db.products_enriched")
+
+# Verify
+result = spark.table("silver_db.products_enriched")
+print(f"\n✅ Verification:")
+print(f"   Rows: {result.count():,}")
+print(f"   Columns: {len(result.columns)}")
+
+# Show schema
+print(f"\n📋 Schema:")
+result.printSchema()
+
+# Sample by department
+print(f"\n📊 Products by Department (Top 10):")
+dept_counts = result.groupBy("department_name").count() \
+    .orderBy(col("count").desc())
+dept_counts.show(10, truncate=False)
+
+print("\n" + "=" * 70)
+print("✅ PRODUCTS ENRICHED SAVED!")
+print("=" * 70)
+
+# COMMAND ----------
+
+# Cell 7: Create User Order History
+
+print("=" * 70)
+print("👥 CREATING USER ORDER HISTORY")
+print("=" * 70)
+
+from pyspark.sql.functions import (
+    count, max, min, avg, sum, 
+    datediff, current_timestamp, lit
+)
+
+# Load cleaned orders
+print("\n📥 Loading cleaned orders...")
+orders = spark.table("silver_db.orders_cleaned")
+print(f"   Orders: {orders.count():,}")
+
+# Aggregate by user
+print("\n📊 AGGREGATING BY USER:")
+user_metrics = orders.groupBy("user_id").agg(
+    count("order_id").alias("total_orders"),
+    max("order_number").alias("max_order_number"),
+    min("order_dow").alias("first_order_dow"),
+    max("order_dow").alias("last_order_dow"),
+    avg("order_hour_of_day").alias("avg_order_hour"),
+    max("days_since_prior_order").alias("max_days_between_orders"),
+    avg("days_since_prior_order").alias("avg_days_between_orders")
+)
+
+user_count = user_metrics.count()
+print(f"   ✅ Aggregated {user_count:,} users")
+
+# Add derived features
+print("\n➕ ADDING DERIVED FEATURES:")
+
+# Calculate user activity level
+user_enriched = user_metrics.withColumn(
+    "user_activity_level",
+    when(col("total_orders") >= 20, "VERY_ACTIVE")
+    .when(col("total_orders") >= 10, "ACTIVE")
+    .when(col("total_orders") >= 5, "MODERATE")
+    .otherwise("LOW")
+)
+
+# Add ordering preference (morning/afternoon/evening)
+user_enriched = user_enriched.withColumn(
+    "ordering_preference",
+    when(col("avg_order_hour") < 10, "MORNING")
+    .when(col("avg_order_hour") < 17, "AFTERNOON")
+    .otherwise("EVENING")
+)
+
+# Add metadata
+user_enriched = user_enriched.withColumn(
+    "silver_processing_time", 
+    current_timestamp()
+)
+
+print(f"   ✅ Added: user_activity_level, ordering_preference, metadata")
+
+# Show sample
+print("\n📊 USER METRICS SAMPLE:")
+user_enriched.orderBy(col("total_orders").desc()).show(10, truncate=False)
+
+# Distribution
+print("\n📈 ACTIVITY LEVEL DISTRIBUTION:")
+user_enriched.groupBy("user_activity_level").count() \
+    .orderBy(col("count").desc()).show()
+
+print("\n📈 ORDERING PREFERENCE DISTRIBUTION:")
+user_enriched.groupBy("ordering_preference").count() \
+    .orderBy(col("count").desc()).show()
+
+print("\n" + "=" * 70)
+print("✅ USER ORDER HISTORY CREATED!")
+print("=" * 70)
+
+# COMMAND ----------
+
+# Cell 8: Save User Order History to Silver
+
+print("=" * 70)
+print("💾 SAVING USER ORDER HISTORY TO SILVER")
+print("=" * 70)
+
+# Write to Delta
+print("\n💾 Writing to Delta Lake...")
+user_enriched.write \
+    .format("delta") \
+    .mode("overwrite") \
+    .saveAsTable("silver_db.user_order_history")
+
+print("   ✅ Saved as silver_db.user_order_history")
+
+# Verify
+result = spark.table("silver_db.user_order_history")
+print(f"\n✅ Verification:")
+print(f"   Rows: {result.count():,}")
+print(f"   Columns: {len(result.columns)}")
+
+# Schema
+print(f"\n📋 Schema:")
+result.printSchema()
+
+print("\n" + "=" * 70)
+print("✅ USER ORDER HISTORY SAVED!")
+print("=" * 70)
