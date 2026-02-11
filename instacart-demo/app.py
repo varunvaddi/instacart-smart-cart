@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import math
+from pathlib import Path
 
 # ============================================================================
 # PAGE CONFIG
@@ -33,14 +34,17 @@ st.markdown("""
 # ============================================================================
 # LOAD DATA
 # ============================================================================
+BASE_DIR = Path(__file__).parent
+
 @st.cache_data
 def load_data():
     try:
-        users = pd.read_csv('sample_users.csv')
-        reorder_recs = pd.read_csv('reorder_recommendations.csv')
-        rules = pd.read_csv('association_rules.csv')
-        metrics = pd.read_csv('model_metrics.csv')
+        users = pd.read_csv(BASE_DIR / "sample_users.csv")
+        reorder_recs = pd.read_csv(BASE_DIR / "reorder_recommendations.csv")
+        rules = pd.read_csv(BASE_DIR / "association_rules.csv")
+        metrics = pd.read_csv(BASE_DIR / "model_metrics.csv")
         return users, reorder_recs, rules, metrics
+    
     except Exception as e:
         st.error(f"Error loading data: {e}")
         st.stop()
@@ -58,8 +62,8 @@ with col1:
 
 with col2:
     st.markdown("### Links")
-    st.markdown("[![GitHub](https://img.shields.io/badge/GitHub-black?logo=github)](https://github.com/yourusername)")
-    st.markdown("[![LinkedIn](https://img.shields.io/badge/LinkedIn-blue?logo=linkedin)](https://linkedin.com/in/yourprofile)")
+    st.markdown("[![GitHub](https://img.shields.io/badge/GitHub-black?logo=github)](https://github.com/varunvaddi)")
+    st.markdown("[![LinkedIn](https://img.shields.io/badge/LinkedIn-blue?logo=linkedin)](https://linkedin.com/in/varunvaddi)")
 
 st.markdown("---")
 
