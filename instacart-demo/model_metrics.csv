@@ -1,0 +1,6 @@
+Model,Metric,Value,Type
+Reorder V1,AUC,0.8001,Classification
+Reorder V2,AUC,0.733,Classification
+LTV,R²,0.9049,Regression
+Churn,AUC,0.7585,Classification
+Churn Optimized,AUC,0.7738,Classification
