@@ -38,7 +38,7 @@ wheels/
 Thumbs.db
 
 # Data (optional - if you want to exclude large files)
-# *.csv
+#*.csv
 
 # Logs
 *.log
